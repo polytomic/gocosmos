@@ -586,6 +586,7 @@ type ListDocsReq struct {
 	SessionToken        string // string token used with session level consistency
 	NotMatchEtag        string
 	PartitionKeyRangeId string
+	Incremental         bool
 }
 
 // ListDocuments invokes CosmosDB API to query read-feed for documents.
@@ -611,6 +612,9 @@ func (c *RestClient) ListDocuments(r ListDocsReq) *RespListDocs {
 	if r.NotMatchEtag != "" {
 		req.Header.Set("If-None-Match", r.NotMatchEtag)
 	}
+	if r.Incremental {
+		req.Header.Set("A-IM", "Incremental feed")
+	}
 	if r.PartitionKeyRangeId != "" {
 		req.Header.Set("X-Ms-Documentdb-PartitionKeyRangeId", r.PartitionKeyRangeId)
 	}
@@ -620,7 +624,9 @@ func (c *RestClient) ListDocuments(r ListDocsReq) *RespListDocs {
 	if result.CallErr == nil {
 		result.ContinuationToken = result.RespHeader["X-MS-CONTINUATION"]
 		result.Etag = result.RespHeader["ETAG"]
-		result.CallErr = json.Unmarshal(result.RespBody, &result)
+		if result.StatusCode != 304 {
+			result.CallErr = json.Unmarshal(result.RespBody, &result)
+		}
 	}
 	return result
 }
