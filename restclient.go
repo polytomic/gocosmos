@@ -124,7 +124,7 @@ func (c *RestClient) buildJsonRequest(method, url string, params interface{}) *h
 
 func (c *RestClient) addAuthHeader(req *http.Request, method, resType, resId string) *http.Request {
 	now := time.Now().In(locGmt)
-	stringToSign := strings.ToLower(fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n", method, resType, resId, now.Format(time.RFC1123), ""))
+	stringToSign := fmt.Sprintf("%s\n%s\n%s\n%s\n%s\n", strings.ToLower(method), resType, resId, strings.ToLower(now.Format(time.RFC1123)), "")
 	h := hmac.New(sha256.New, c.authKey)
 	h.Write([]byte(stringToSign))
 	signature := base64.StdEncoding.EncodeToString(h.Sum(nil))
