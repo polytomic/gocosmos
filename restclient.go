@@ -153,7 +153,9 @@ func (c *RestClient) buildRestReponse(resp *gjrc.GjrcResponse) RestReponse {
 			result.RequestCharge = -1
 		}
 		result.SessionToken = result.RespHeader["X-MS-SESSION-TOKEN"]
-		if result.StatusCode >= 400 {
+		if result.StatusCode == http.StatusTooManyRequests {
+			result.ApiErr = NewOverLimitError(result.StatusCode, result.RespBody)
+		} else if result.StatusCode >= 400 {
 			result.ApiErr = fmt.Errorf("error executing Azure CosmosDB command; StatusCode=%d;Body=%s", result.StatusCode, result.RespBody)
 		}
 	}
