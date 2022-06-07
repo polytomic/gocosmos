@@ -32,6 +32,14 @@ const (
 	settingInsecureSkipVerify = "INSECURESKIPVERIFY"
 )
 
+var (
+	SubstatusHeader    = http.CanonicalHeaderKey("x-ms-substatus")
+	SessionTokenHeader = http.CanonicalHeaderKey("x-ms-session-token")
+
+	ReadWriteSessionNotAvailableSubStatus = "1002"
+	ReadWriteSessionNotAvailableRetries   = 5
+)
+
 // NewRestClient constructs a new RestClient instance from the supplied connection string.
 //
 // httpClient is reused if supplied. Otherwise, a new http.Client instance is created.
@@ -185,7 +193,7 @@ func (c *RestClient) CreateDatabase(spec DatabaseSpec) *RespCreateDb {
 		req.Header.Set("X-Ms-Cosmos-Offer-Autopilot-Settings", fmt.Sprintf(`{"maxThroughput":%d}`, spec.MaxRu))
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespCreateDb{RestReponse: c.buildRestReponse(resp), DbInfo: DbInfo{Id: spec.Id}}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.DbInfo))
@@ -202,7 +210,7 @@ func (c *RestClient) GetDatabase(dbName string) *RespGetDb {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "dbs", "dbs/"+dbName)
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespGetDb{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.DbInfo))
@@ -219,7 +227,7 @@ func (c *RestClient) DeleteDatabase(dbName string) *RespDeleteDb {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "dbs", "dbs/"+dbName)
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespDeleteDb{RestReponse: c.buildRestReponse(resp)}
 	return result
 }
@@ -233,7 +241,7 @@ func (c *RestClient) ListDatabases() *RespListDb {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "dbs", "")
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespListDb{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &result)
@@ -283,7 +291,7 @@ func (c *RestClient) CreateCollection(spec CollectionSpec) *RespCreateColl {
 		req.Header.Set("X-Ms-Cosmos-Offer-Autopilot-Settings", fmt.Sprintf(`{"maxThroughput":%d}`, spec.MaxRu))
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespCreateColl{RestReponse: c.buildRestReponse(resp), CollInfo: CollInfo{Id: spec.CollName}}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.CollInfo))
@@ -319,7 +327,7 @@ func (c *RestClient) ReplaceCollection(spec CollectionSpec) *RespReplaceColl {
 		req.Header.Set("X-Ms-Cosmos-Offer-Autopilot-Settings", fmt.Sprintf(`{"maxThroughput":%d}`, spec.MaxRu))
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespReplaceColl{RestReponse: c.buildRestReponse(resp), CollInfo: CollInfo{Id: spec.CollName}}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.CollInfo))
@@ -336,7 +344,7 @@ func (c *RestClient) GetCollection(dbName, collName string) *RespGetColl {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "colls", "dbs/"+dbName+"/colls/"+collName)
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespGetColl{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.CollInfo))
@@ -353,7 +361,7 @@ func (c *RestClient) DeleteCollection(dbName, collName string) *RespDeleteColl {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "colls", "dbs/"+dbName+"/colls/"+collName)
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespDeleteColl{RestReponse: c.buildRestReponse(resp)}
 	return result
 }
@@ -367,7 +375,7 @@ func (c *RestClient) ListCollections(dbName string) *RespListColl {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "colls", "dbs/"+dbName)
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespListColl{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &result)
@@ -392,7 +400,7 @@ func (c *RestClient) GetPkranges(dbName, collName string) *RespGetPkranges {
 	req := c.buildJsonRequest(method, url, nil)
 	req = c.addAuthHeader(req, method, "pkranges", "dbs/"+dbName+"/colls/"+collName)
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespGetPkranges{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &result)
@@ -430,8 +438,7 @@ func (c *RestClient) CreateDocument(spec DocumentSpec) *RespCreateDoc {
 	}
 	jsPkValues, _ := json.Marshal(spec.PartitionKeyValues)
 	req.Header.Set("X-Ms-Documentdb-PartitionKey", string(jsPkValues))
-
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespCreateDoc{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.DocInfo))
@@ -454,7 +461,7 @@ func (c *RestClient) ReplaceDocument(matchEtag string, spec DocumentSpec) *RespR
 	jsPkValues, _ := json.Marshal(spec.PartitionKeyValues)
 	req.Header.Set("X-Ms-Documentdb-PartitionKey", string(jsPkValues))
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespReplaceDoc{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.DocInfo))
@@ -492,7 +499,7 @@ func (c *RestClient) GetDocument(r DocReq) *RespGetDoc {
 		req.Header.Set("X-Ms-Session-Token", r.SessionToken)
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespGetDoc{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil && result.StatusCode != 304 {
 		result.CallErr = json.Unmarshal(result.RespBody, &(result.DocInfo))
@@ -514,7 +521,7 @@ func (c *RestClient) DeleteDocument(r DocReq) *RespDeleteDoc {
 		req.Header.Set("If-Match", r.MatchEtag)
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespDeleteDoc{RestReponse: c.buildRestReponse(resp)}
 	return result
 }
@@ -570,7 +577,7 @@ func (c *RestClient) QueryDocuments(query QueryReq) *RespQueryDocs {
 		req.Header.Set("X-Ms-Session-Token", query.SessionToken)
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespQueryDocs{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.ContinuationToken = result.RespHeader["X-MS-CONTINUATION"]
@@ -621,7 +628,7 @@ func (c *RestClient) ListDocuments(r ListDocsReq) *RespListDocs {
 		req.Header.Set("X-Ms-Documentdb-PartitionKeyRangeId", r.PartitionKeyRangeId)
 	}
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespListDocs{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.ContinuationToken = result.RespHeader["X-MS-CONTINUATION"]
@@ -663,7 +670,7 @@ func (c *RestClient) QueryOffers(query string) *RespQueryOffers {
 	req.Header.Set("Content-Type", "application/query+json")
 	req.Header.Set("X-Ms-Documentdb-Isquery", "true")
 
-	resp := c.client.Do(req)
+	resp := c.handleErrorWrapper(req)
 	result := &RespQueryOffers{RestReponse: c.buildRestReponse(resp)}
 	if result.CallErr == nil {
 		result.ContinuationToken = result.RespHeader["X-MS-CONTINUATION"]
@@ -741,7 +748,7 @@ func (c *RestClient) ReplaceOfferForResource(rid string, ru, maxru int) *RespRep
 		for k, v := range headers {
 			req.Header.Set(k, v)
 		}
-		resp := c.client.Do(req)
+		resp := c.handleErrorWrapper(req)
 		result := &RespReplaceOffer{RestReponse: c.buildRestReponse(resp)}
 		if result.CallErr == nil {
 			if (headers["X-Ms-Cosmos-Migrate-Offer-To-Autopilot"] == "true" && maxru > 0) || (headers["X-Ms-Cosmos-Migrate-Offer-To-Manual-Throughput"] == "true" && ru > 0) {
@@ -1094,4 +1101,31 @@ type RespGetPkranges struct {
 	RestReponse `json:"-"`
 	Pkranges    []PkrangeInfo `json:"PartitionKeyRanges"`
 	Count       int64         `json:"_count"` // number of records returned from the operation
+}
+
+func (c *RestClient) handleErrorWrapper(req *http.Request, count ...int) *gjrc.GjrcResponse {
+	if len(count) == 0 {
+		count = append(count, 1)
+	}
+	if count[0] > ReadWriteSessionNotAvailableRetries {
+		return nil
+	}
+	count[0] += 1
+	gjrc := c.client.Do(req)
+	resp := gjrc.HttpResponse()
+	if resp != nil {
+		if resp.StatusCode == http.StatusNotFound {
+			if statuses, ok := resp.Header[SubstatusHeader]; ok && len(statuses) > 0 {
+				for _, status := range statuses {
+					if status == ReadWriteSessionNotAvailableSubStatus {
+						// Remove session token header to avoid retrying with the same session token
+						req.Header.Del(SessionTokenHeader)
+						time.Sleep(1 * time.Second)
+						gjrc = c.handleErrorWrapper(req, count[0])
+					}
+				}
+			}
+		}
+	}
+	return gjrc
 }
