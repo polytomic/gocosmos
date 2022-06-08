@@ -3,12 +3,16 @@ package gocosmos
 import (
 	"fmt"
 	"math/rand"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"gopkg.in/h2non/gock.v1"
 )
 
 func TestNewRestClient(t *testing.T) {
@@ -1658,4 +1662,52 @@ func TestRestClient_ListDocumentsCrossPartition(t *testing.T) {
 	} else if result.StatusCode != 404 {
 		t.Fatalf("%s failed: <status-code> expected %#v but received %#v", name, 404, result.StatusCode)
 	}
+}
+
+func TestRestClient_HandleError(t *testing.T) {
+	t.Run("remove session token on read/write session errors", func(t *testing.T) {
+		defer gock.OffAll()
+
+		requestCount := 0
+		gock.Observe(func(req *http.Request, mock gock.Mock) {
+			// First request can have session token
+			if requestCount != 0 {
+				if _, ok := req.Header["X-Ms-Session-Token"]; ok {
+					t.Fatal("session token should be removed")
+				}
+			}
+			// After retrying at least once, mutate mock reponse to succesful
+			if requestCount > 1 {
+				mock.Response().StatusCode = 200
+				mock.Response().File("./test-fixtures/list-documents.json")
+			}
+			requestCount++
+
+		})
+
+		gock.New("https://cosmos.example.com").
+			Get("/dbs/acme/colls/users").
+			HeaderPresent("Authorization").
+			Persist().
+			Reply(404).
+			SetHeader("X-Ms-Session-Token", "fake").
+			SetHeader("X-Ms-Substatus", ReadWriteSessionNotAvailableSubStatus).
+			JSON(map[string]interface{}{})
+
+		client := &http.Client{}
+		restClient, err := NewRestClient(client, "AccountEndpoint=https://cosmos.example.com;AccountKey=fake")
+		assert.NoError(t, err)
+
+		req := ListDocsReq{
+			DbName:           "acme",
+			CollName:         "users",
+			ConsistencyLevel: "Session",
+			SessionToken:     "fake",
+		}
+		res := restClient.ListDocuments(req)
+		assert.NoError(t, res.Error())
+		assert.Equal(t, res.Count, int64(5))
+
+	})
+
 }
