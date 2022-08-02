@@ -1121,7 +1121,9 @@ func (c *RestClient) handleErrorWrapper(req *http.Request, count ...int) *gjrc.G
 						// Remove session token header to avoid retrying with the same session token
 						req.Header.Del(SessionTokenHeader)
 						time.Sleep(1 * time.Second)
-						gjrc = c.handleErrorWrapper(req, count[0])
+						if gres := c.handleErrorWrapper(req, count[0]); gres != nil {
+							gjrc = gres
+						}
 					}
 				}
 			}
