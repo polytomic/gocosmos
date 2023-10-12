@@ -44,7 +44,9 @@ var (
 //
 // httpClient is reused if supplied. Otherwise, a new http.Client instance is created.
 // connStr is expected to be in the following format:
-//     AccountEndpoint=<cosmosdb-restapi-endpoint>;AccountKey=<account-key>[;TimeoutMs=<timeout-in-ms>][;Version=<cosmosdb-api-version>][;AutoId=<true/false>][;InsecureSkipVerify=<true/false>]
+//
+//	AccountEndpoint=<cosmosdb-restapi-endpoint>;AccountKey=<account-key>[;TimeoutMs=<timeout-in-ms>][;Version=<cosmosdb-api-version>][;AutoId=<true/false>][;InsecureSkipVerify=<true/false>]
+//
 // If not supplied, default value for TimeoutMs is 10 seconds, Version is "2018-12-31", AutoId is true, and InsecureSkipVerify is false
 //
 // - AutoId is added since v0.1.2
@@ -395,17 +397,30 @@ func (c *RestClient) ListCollections(dbName string) *RespListColl {
 //
 // Available since v0.1.3
 func (c *RestClient) GetPkranges(dbName, collName string) *RespGetPkranges {
-	method := "GET"
-	url := c.endpoint + "/dbs/" + dbName + "/colls/" + collName + "/pkranges"
-	req := c.buildJsonRequest(method, url, nil)
-	req = c.addAuthHeader(req, method, "pkranges", "dbs/"+dbName+"/colls/"+collName)
+	ranges := &RespGetPkranges{}
+	continuation := ""
+	for {
+		method := "GET"
+		url := c.endpoint + "/dbs/" + dbName + "/colls/" + collName + "/pkranges"
+		req := c.buildJsonRequest(method, url, nil)
+		req = c.addAuthHeader(req, method, "pkranges", "dbs/"+dbName+"/colls/"+collName)
+		if continuation != "" {
+			req.Header.Set("x-ms-continuation", continuation)
+		}
 
-	resp := c.handleErrorWrapper(req)
-	result := &RespGetPkranges{RestReponse: c.buildRestReponse(resp)}
-	if result.CallErr == nil {
-		result.CallErr = json.Unmarshal(result.RespBody, &result)
+		resp := c.handleErrorWrapper(req)
+		result := &RespGetPkranges{RestReponse: c.buildRestReponse(resp)}
+		if result.CallErr == nil {
+			result.CallErr = json.Unmarshal(result.RespBody, &result)
+		}
+		ranges.Pkranges = append(ranges.Pkranges, result.Pkranges...)
+		ranges.Count += result.Count
+		ranges.RestReponse = result.RestReponse
+		if continuation = result.RespHeader["X-MS-CONTINUATION"]; continuation == "" {
+			break
+		}
 	}
-	return result
+	return ranges
 }
 
 // DocumentSpec specifies a CosmosDB document specifications for creation.
@@ -712,9 +727,9 @@ func (c *RestClient) buildReplaceOfferContentAndHeaders(currentOffer OfferInfo, 
 
 // ReplaceOfferForResource invokes CosmosDB API to replace/update offer info of a resource.
 //
-//     - If ru > 0 and maxru <= 0: switch to manual throughput and set provisioning value to ru.
-//     - If ru <= 0 and maxru > 0: switch to autopilot throughput and set max provisioning value to maxru.
-//     - If ru <= 0 and maxru <= 0: switch to autopilot throughput with default provisioning value.
+//   - If ru > 0 and maxru <= 0: switch to manual throughput and set provisioning value to ru.
+//   - If ru <= 0 and maxru > 0: switch to autopilot throughput and set max provisioning value to maxru.
+//   - If ru <= 0 and maxru <= 0: switch to autopilot throughput with default provisioning value.
 //
 // Available since v0.1.1
 func (c *RestClient) ReplaceOfferForResource(rid string, ru, maxru int) *RespReplaceOffer {
