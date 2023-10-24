@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -99,6 +100,7 @@ func NewRestClient(httpClient *http.Client, connStr string) (*RestClient, error)
 	}
 	return &RestClient{
 		client:     gjrc.NewGjrc(httpClient, time.Duration(timeoutMs)*time.Millisecond),
+		hc:         httpClient,
 		endpoint:   endpoint,
 		authKey:    key,
 		apiVersion: apiVersion,
@@ -110,6 +112,7 @@ func NewRestClient(httpClient *http.Client, connStr string) (*RestClient, error)
 // RestClient is REST-based client for Azure CosmosDB
 type RestClient struct {
 	client     *gjrc.Gjrc
+	hc         *http.Client
 	endpoint   string            // Azure CosmosDB endpoint
 	authKey    []byte            // Account key to authenticate
 	apiVersion string            // Azure CosmosDB API version
@@ -651,6 +654,73 @@ func (c *RestClient) ListDocuments(r ListDocsReq) *RespListDocs {
 		if result.StatusCode != 304 {
 			result.CallErr = json.Unmarshal(result.RespBody, &result)
 		}
+	}
+	return result
+}
+
+// ListDocumentsRaw deserializes directly into the result struct without
+// intermediate marshalling.
+//
+// See: https://docs.microsoft.com/en-us/rest/api/cosmos-db/list-documents.
+func (c *RestClient) ListDocumentsRaw(r ListDocsReq) *RespListDocs {
+	method := "GET"
+	url := c.endpoint + "/dbs/" + r.DbName + "/colls/" + r.CollName + "/docs"
+	req := c.buildJsonRequest(method, url, nil)
+	req = c.addAuthHeader(req, method, "docs", "dbs/"+r.DbName+"/colls/"+r.CollName)
+	if r.MaxItemCount > 0 {
+		req.Header.Set("X-Ms-Max-Item-Count", strconv.Itoa(r.MaxItemCount))
+	}
+	if r.ContinuationToken != "" {
+		req.Header.Set("X-Ms-Continuation", r.ContinuationToken)
+	}
+	if r.ConsistencyLevel != "" {
+		req.Header.Set("X-Ms-Consistency-Level", r.ConsistencyLevel)
+	}
+	if r.SessionToken != "" {
+		req.Header.Set("X-Ms-Session-Token", r.SessionToken)
+	}
+	if r.NotMatchEtag != "" {
+		req.Header.Set("If-None-Match", r.NotMatchEtag)
+	}
+	if r.Incremental {
+		req.Header.Set("A-IM", "Incremental feed")
+	}
+	if r.PartitionKeyRangeId != "" {
+		req.Header.Set("X-Ms-Documentdb-PartitionKeyRangeId", r.PartitionKeyRangeId)
+	}
+
+	result := &RespListDocs{}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		result.CallErr = err
+		return result
+	}
+	for count := 0; resp != nil && resp.StatusCode == http.StatusNotFound && count > ReadWriteSessionNotAvailableRetries; count++ {
+		if statuses, ok := resp.Header[SubstatusHeader]; ok && len(statuses) > 0 {
+			sessionError := false
+			for _, status := range statuses {
+				if status == ReadWriteSessionNotAvailableSubStatus {
+					sessionError = true
+					// Remove session token header to avoid retrying with the same session token
+					req.Header.Del(SessionTokenHeader)
+				}
+			}
+			if !sessionError {
+				break
+			}
+		}
+	}
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.CallErr = err
+		return result
+	}
+
+	result.ContinuationToken = resp.Header.Get("X-MS-CONTINUATION")
+	result.Etag = resp.Header.Get("ETAG")
+	result.StatusCode = resp.StatusCode
+	if result.StatusCode != 304 {
+		result.CallErr = json.Unmarshal(bodyBytes, &result)
 	}
 	return result
 }
