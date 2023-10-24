@@ -725,6 +725,7 @@ func (c *RestClient) ListDocumentsRaw(r ListDocsReq) *RespListDocs {
 
 	result.ContinuationToken = resp.Header.Get("X-MS-CONTINUATION")
 	result.Etag = resp.Header.Get("ETAG")
+	result.StatusCode = resp.StatusCode
 	if result.StatusCode != 304 {
 		result.CallErr = json.Unmarshal(bodyBytes, &result)
 		if result.CallErr != nil {
