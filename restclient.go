@@ -697,6 +697,7 @@ func (c *RestClient) ListDocumentsRaw(r ListDocsReq) *RespListDocs {
 	result := &RespListDocs{}
 	resp, err := c.hc.Do(req)
 	if err != nil {
+		fmt.Println("client err")
 		result.CallErr = err
 		return result
 	}
@@ -717,6 +718,7 @@ func (c *RestClient) ListDocumentsRaw(r ListDocsReq) *RespListDocs {
 	}
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
+		fmt.Println("io Err body", bodyBytes)
 		result.CallErr = err
 		return result
 	}
@@ -725,6 +727,9 @@ func (c *RestClient) ListDocumentsRaw(r ListDocsReq) *RespListDocs {
 	result.Etag = resp.Header.Get("ETAG")
 	if result.StatusCode != 304 {
 		result.CallErr = json.Unmarshal(bodyBytes, &result)
+		if result.CallErr != nil {
+			fmt.Println("Err body", bodyBytes)
+		}
 	}
 	return result
 }
