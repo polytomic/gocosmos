@@ -1170,13 +1170,14 @@ type RespReplaceOffer struct {
 //
 // Available since v0.1.3.
 type PkrangeInfo struct {
-	Id           string `json:"id"`           // the stable and unique ID for the partition key range within each collection
-	MaxExclusive string `json:"maxExclusive"` // (internal use) the maximum partition key hash value for the partition key range
-	MinInclusive string `json:"minInclusive"` // (minimum use) the maximum partition key hash value for the partition key range
-	Rid          string `json:"_rid"`         // (system generated property) _rid attribute of the pkrange
-	Ts           int64  `json:"_ts"`          // (system-generated property) _ts attribute of the pkrange
-	Self         string `json:"_self"`        // (system-generated property) _self attribute of the pkrange
-	Etag         string `json:"_etag"`        // (system-generated property) _etag attribute of the pkrange
+	Id           string   `json:"id"`           // the stable and unique ID for the partition key range within each collection
+	MaxExclusive string   `json:"maxExclusive"` // (internal use) the maximum partition key hash value for the partition key range
+	MinInclusive string   `json:"minInclusive"` // (minimum use) the maximum partition key hash value for the partition key range
+	Rid          string   `json:"_rid"`         // (system generated property) _rid attribute of the pkrange
+	Ts           int64    `json:"_ts"`          // (system-generated property) _ts attribute of the pkrange
+	Self         string   `json:"_self"`        // (system-generated property) _self attribute of the pkrange
+	Etag         string   `json:"_etag"`        // (system-generated property) _etag attribute of the pkrange
+	Parents      []string `json:"parents"`
 }
 
 // RespGetPkranges captures the response from GetPkranges call.
