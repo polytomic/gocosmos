@@ -695,6 +695,10 @@ func (c *RestClient) ListDocumentsRaw(r ListDocsReq) *RespListDocs {
 		result.CallErr = err
 		return result
 	}
+	if resp.StatusCode >= 400 {
+		result.ApiErr = fmt.Errorf("error executing Azure CosmosDB command; StatusCode=%d;Body=%s", result.StatusCode, result.RespBody)
+		return result
+	}
 	for count := 0; resp != nil && resp.StatusCode == http.StatusNotFound && count > ReadWriteSessionNotAvailableRetries; count++ {
 		if statuses, ok := resp.Header[SubstatusHeader]; ok && len(statuses) > 0 {
 			sessionError := false
